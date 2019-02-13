@@ -15,13 +15,12 @@ class SteganoBitmap:
         
         return capacity
 
-    def hide(self, img_path, message):
+    def hide(self, img_path, out_path, is_string, input_data):
         img = Image.open(img_path)
         pixel_array = self.get_pixel_array(img)
 
-        message_to_hide = self.build_string_to_hide(True, message, '00')
-
-        print('string built : {0}'.format(self.build_string_to_hide(True, message, '00')))
+        # message_to_hide = self.build_string_to_hide(True, message, '00')
+        message_to_hide = self.build_string_to_hide(is_string, input_data, '00')
 
         for i in range(0, len(pixel_array)):
             pixel_array[i] = list(pixel_array[i])
@@ -34,7 +33,7 @@ class SteganoBitmap:
             pixel_array[i] = tuple(pixel_array[i])
 
         img.putdata(pixel_array)
-        img.save('out/stego.bmp')
+        img.save(out_path)
         img.close()
 
     def extract(self, img_path):
@@ -60,17 +59,24 @@ class SteganoBitmap:
                     string_bin = extracted_bin[signature_length + 36: signature_length + 36 + (length * 8)]
 
                     extracted_string = binascii.unhexlify('%x' % (int(string_bin, 2)))
-
                     return extracted_string.decode('utf-8')
 
                 elif extracted_is_string == '00':
-                    return NotImplementedError()
-                    # if no
-                        # get file_path length
-                        # get length
-                        # get file_path
-                        # get content
-                        # build the file
+                    filename_length_bin = extracted_bin[signature_length + 4: signature_length + 20]
+                    filename_length = int(filename_length_bin, 2)
+                    content_length_bin = extracted_bin[signature_length + 20: signature_length + 52]
+                    content_length = int(content_length_bin, 2)
+                    filename_bin = extracted_bin[signature_length + 52: signature_length + 52 + (filename_length * 8)]
+                    content_bin = extracted_bin[signature_length + 52 + (filename_length * 8): signature_length + 52 + ((filename_length + content_length) * 8)]
+
+                    filename = binascii.unhexlify('%x' % (int(filename_bin, 2)))
+                    filename = filename.decode('utf-8')
+                    content = binascii.unhexlify('%x' % (int(content_bin, 2)))
+                    with open('out/' + filename, 'wb') as f:
+                        f.write(content)
+                    f.close()
+
+                    return True
                 else:
                     return False
             else:
@@ -95,9 +101,8 @@ class SteganoBitmap:
             with open(file_path, 'rb') as f:
                 file_byte = f.read()
             f.close()
-            print('filebyte : {0}'.format(file_byte))
             #add filename_length_in_bin 16b
-            string_to_hide += bin(len(file_path))[2:].zfill(16)
+            string_to_hide += bin(len(basename(file_path)))[2:].zfill(16)
             #add length_in_bin 32b
             string_to_hide += bin(len(file_byte))[2:].zfill(32)
             #add filename
