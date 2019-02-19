@@ -37,7 +37,8 @@ cap = cv2.VideoCapture(video)
 n_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)              # No of frames in video
 width    = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH ))        # Get width, a.k.a horizontal n pixel
 height   = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT ))       # Get height, a.k.a vertical n pixel
-payload  = int(n_frames) * width * height - 2        # No payload = length of message that can be encrypted
+fps      = int(cap.get(cv2.CAP_PROP_FPS))                 # Get FPS
+payload  = int(n_frames) * width * height - 2             # No payload = length of message that can be encrypted
                                                           # -2 for mode checking at start
   
 ## STEP 4.0 : Start asking
@@ -56,8 +57,21 @@ if nbit == '2':
   payload *= 2
   
 ## STEP 4.3 : Ask the frame placement
+print("Choose frame placement mode(1/2): ")
+print("1. Sequential")
+print("2. Random")
+f_place = input()
+while (f_place != "1" and f_place != "2"):
+  f_place = input("Wrong input. Choose frame placement mode(1/2)): ")
 
 ## STEP 4.4 : Ask the pixel placement
+print("Choose pixel placement mode(1/2): ")
+print("1. Sequential")
+print("2. Random")
+p_place = input()
+while (p_place != "1" and p_place != "2"):
+  p_place = input("Wrong input. Choose pixel placement mode(1/2)): ")
+
 
 ## STEP 4.5 : Ask the message
 if save in ['Y','y']:
@@ -76,10 +90,17 @@ encrypt = input("Do you want to encrypt your message?(Y/N): ")
 while encrypt not in ['Y','N','y','n']:
   enncrypt = input("Wrong input. Do you want to encrypt your message?(Y/N): ")
 
-## STEP 5 : Do the rest
+## STEP 5 : Turn message into bytes
+bytes_message = str(int(f_place) - 1) + "" + str(int(p_place) - 1) 
 
+## 0 0 for sequential frame, sequential pixel 
+## 0 1 for sequential frame, random pixel
+## 1 0 for random frame, sequential pixel
+## 1 1 for random frame, random pixel
 
-
+for char in message:
+  bytes_message += addzero(bin(ord(char)))
+  
 i = 0
 videoLSB = ""
 #while i < n_frames:
@@ -94,9 +115,11 @@ videoLSB = ""
 #        break
 #    i += 1
     
+#11 01111001 01100101 01110011
 
 cv2.destroyAllWindows()
 print(videoLSB)
 print(int(n_frames))
 #print(ord('a') + 10)
+
 
