@@ -24,24 +24,30 @@ def encrypt():
     inputPath = "./static/%s" % (f_msg.filename)
 
     buf = f_msg.read()
-    print("msg enc type: ", type(request.form['messageEncryption']))
-    if (bool(request.form['messageEncryption'])):
-        buf = VigenereExtended(key=request.form['stegoKey']).encrypt(buf)
+    # print("msg enc type: ", type(request.form['messageEncryption']))
+    # if (bool(request.form['messageEncryption'])):
+    #     buf = VigenereExtended(key=request.form['stegoKey']).encrypt(buf)
 
     createFile(containerPath, f_file.read())
     createFile(inputPath, buf)
 
+    encrypted = True if request.form['messageEncryption'] == "true" else False
+    randomSeq = True if request.form['randomSequence'] == "true" else False
     # Stego Engine Job
     engine = WavStegoEngine(filePath=containerPath)
-    outPath = engine.encryptFile(filePath=inputPath,
+    status, outPath = engine.encryptFile(filePath=inputPath,
         stegoKey=request.form['stegoKey'],
-        isMessageEncrypted=bool(request.form['messageEncryption']),
-        isRandomSequence=bool(request.form['randomSequence']))
+        isMessageEncrypted=encrypted,
+        isRandomSequence=randomSeq)
+    if (not status):
+        message = outPath
+        return message, 500
 
     outPath = "/".join(outPath.split('/')[1:])
     print("Outpah")
     print(outPath)
-    return (host+"/"+outPath), 200
+    paths = host+"/"+containerPath+"|"+host+"/"+outPath
+    return paths, 200
 
 
 @app.route('/decrypt', methods=['POST'])

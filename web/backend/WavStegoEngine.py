@@ -72,14 +72,18 @@ class WavStegoEngine:
 
     @validateWAV
     def __encryptBytes(self, message_file_format, f_bytes, N_FRAMES, N_CHANNELS,stego_key, isMessageEncrypted, isRandomSequence):
-        new_bytes = self.container
-        if (isMessageEncrypted):
-            new_bytes = bytearray(VigenereExtended(key=stego_key).encrypt(new_bytes))
+        new_bytes = bytearray(self.container)
+        print("Encrypted: {}, Shuffled: {}".format(isMessageEncrypted,isRandomSequence))
+        # if (isMessageEncrypted):
+        #     new_bytes = bytearray(VigenereExtended(key=stego_key).encrypt(new_bytes))
+        # else:
+        #     new_bytes = bytearray(new_bytes)
         bytes_per_frame = len(self.container)//N_FRAMES
         steps = bytes_per_frame // N_CHANNELS
 
         pos_li = [i*steps+(steps-1) for i in range(N_FRAMES*N_CHANNELS)]
 
+        
         #Write Encoding for MessageEncrypted and RandomSequence
         codeMessage = 2 if isMessageEncrypted else 0
         codeRandom = 1 if isRandomSequence else 0
@@ -87,9 +91,18 @@ class WavStegoEngine:
 
         # Write formats LSB+1 == 0
         ext_format = message_file_format
+
+        data_size = (8*len(ext_format)+8*len(f_bytes)+1)
+        print("Error, Capacity: {}. But data: {}".format(len(pos_li),data_size))
+        if (len(pos_li) < (data_size)):
+            msg = "Error, Capacity: {}. But data: {}".format(len(pos_li),data_size)
+            return (False, msg)
+
         form_li = pos_li[1:len(ext_format)*8+1]
         byte_to_write = [0 if c == '0' else 1 for c in "".join(
             [format(f_b, "08b") for f_b in bytes(ext_format, "utf-8")])]
+        
+    
         print("Form li len: ",len(form_li))
         print("Byte to write len: ",len(byte_to_write))
         for i in range(len(byte_to_write)):
@@ -98,9 +111,15 @@ class WavStegoEngine:
 
         # Write datas LSB == 1
         data_li = pos_li[1+len(ext_format)*8:].copy()
-        # if (isRandomSequence):
-        #     random.seed(sum([ord(c) for c in stego_key]))
-        #     shuffle(data_li)
+
+        
+
+        print("Data li len: ",len(data_li))
+        if (isRandomSequence):
+            random.seed(sum([ord(c) for c in stego_key]))
+            shuffle(data_li)
+        if (isMessageEncrypted):
+            f_bytes = VigenereExtended(key=stego_key).encrypt(f_bytes)
 
         byte_to_write = [2 if c == '0' else 3 for c in "".join(
             [format(f_b, "08b") for f_b in f_bytes])]
@@ -112,28 +131,28 @@ class WavStegoEngine:
             else:  # Other, LSB+1 and LSB == 0
                 new_bytes[data_li[i]] = new_bytes[data_li[i]] & ~3
 
-        return new_bytes
+        return (True, new_bytes)
 
     @validateWAV
     def __decryptFormatAndBytes(self, f_bytes, N_FRAMES, N_CHANNELS, stego_key):
 
-        bytes_per_frame = len(self.container)//N_FRAMES
+        bytes_per_frame = len(f_bytes)//N_FRAMES
         steps = bytes_per_frame // N_CHANNELS
         pos_li = [i*steps+(steps-1) for i in range(N_FRAMES*N_CHANNELS)]
 
         ext_format = None
         read_bytes = []
         start_format, end_format = pos_li[1], 0
-        start_data, end_data = 0, 0
         
         # Read Encoding for MessageEncrypted and RandomSequence
-        isMessageEncrypted = True if ((f_bytes[pos_li[0]] & 2) == 1) else False
-        isRandomSequence = True if ((f_bytes[pos_li[1]] & 1) == 1) else False
+        isMessageEncrypted = True if ((f_bytes[pos_li[0]] & 2) == 2) else False
+        isRandomSequence = True if ((f_bytes[pos_li[0]] & 1) == 1) else False
 
+        
         # Read formats LSB+1 = 0
         for pos in pos_li[1:]:
             if (f_bytes[pos] & 2 == 2):
-                start_data = end_format = pos
+                end_format = pos
                 break
             else:
                 end_format = pos
@@ -143,19 +162,28 @@ class WavStegoEngine:
         b_fmt = bytes([int(b_str[i:i+8], 2) for i in range(0, len(b_str), 8)])
         ext_format = b_fmt.decode("utf-8")
 
-        # Read datas
-        for i in range(start_data,len(f_bytes)):
-            if (f_bytes[pos_li[i]] & 2 == 0):
-                end_data = pos_li[i]
-                break
-            # else: pass
-        b_str = "".join([str(f_bytes[pos] & 1)
-                         for pos in range(start_data, end_data, steps)])
-        read_bytes = bytes([int(b_str[i:i+8], 2) for i in range(0, len(b_str), 8)])
+        print("Decrypted:  Format: {}".format(ext_format))
+        print("Decrypted: {}, Shuffled: {}".format(isMessageEncrypted,isRandomSequence))
+        
+        data_li = pos_li[1+len(ext_format)*8:].copy()
+        print("Data li len: ",len(data_li))
 
-        # Always decrypt assumption
+        if (isRandomSequence):
+            random.seed(sum([ord(c) for c in stego_key]))
+            shuffle(data_li)
+
+        # Read datas
+        msg_len = 0
+        for i in data_li:
+            if (f_bytes[i] & 2 == 0):
+                break
+            msg_len += 1
+
+        b_str = "".join([str(f_bytes[pos] & 1) for pos in data_li[:msg_len]])
+        read_bytes = bytes([int(b_str[i:i+8], 2) for i in range(0, len(b_str), 8)])
         if (isMessageEncrypted):
             read_bytes = VigenereExtended(key=stego_key).decrypt(read_bytes)
+
 
         return ext_format, read_bytes
 
@@ -179,13 +207,16 @@ class WavStegoEngine:
         data_bytes = f.read()
         print("Bytes length: ", len(data_bytes))
         message_file_format = filePath.split('.')[-1]
-        encrypted_bytes = self.__encryptBytes(
+        status, encrypted_bytes = self.__encryptBytes(
             message_file_format=message_file_format, f_bytes=data_bytes, N_FRAMES=self.params[3], N_CHANNELS=self.params[0],
             stego_key=stegoKey, isMessageEncrypted=isMessageEncrypted, isRandomSequence=isRandomSequence)
+        if (not status):
+            message = encrypted_bytes
+            return (status, message)
         self.__createWAVFile(targetPath=self.targetPath, f_bytes=encrypted_bytes, channel=self.params[0], samp_width=self.params[1],
                              frame_rate=self.params[2], nframe=self.params[3], comp_type=self.params[4], comp_name=self.params[5])
         f.close()
-        return self.targetPath
+        return (status, self.targetPath)
 
     def decryptFile(self, filePath, outputPath, stego_key):
         f = wave.open(filePath, "rb")

@@ -4,6 +4,7 @@ import { withStyles } from '@material-ui/core/styles';
 import { Grid, Button, Paper, TextField, Checkbox, FormGroup, FormControlLabel } from '@material-ui/core';
 import NavigationButtons from '../components/NavigationButtons';
 import ReactAudioPlayer from 'react-audio-player';
+import { saveAs } from 'file-saver';
 import axios from 'axios';
 
 
@@ -42,11 +43,15 @@ class Body extends Component {
 			messageSrc: null,
 			containerFileUpload: null,
 			messageFileUpload: null,
-			audioSrc: null
+			audioSrc: null,
+			audioSrcOri: null,
 		}
 	}
 
 	async handleEncrypt() {
+		if (!this.validateEncrypt()) {
+			return;
+		}
 		console.log(`Encrypting.. Key:${this.state.stegoKey}; ContainerFile: ${this.state.containerFileUpload}; MessageFile: ${this.state.messageFileUpload};Encryption:${this.state.messageEncryption}; RandomSequence:${this.state.randomSequence}  `)
 		if (this.state.containerFileUpload && this.state.messageFileUpload) {
 			this.setState({ audioSrc: null });
@@ -67,36 +72,99 @@ class Body extends Component {
 				}
 			).then(resp => {
 				console.log("Status: ", resp.status);
-				console.log("Response: ", resp.data)
-				this.setState({ audioSrc: resp.data });
+				console.log("Response: ", resp.data);
+				var paths = resp.data.split("|");
+				this.setState({ audioSrc: paths[1], audioSrcOri: paths[0] });
 				// this.render();
-				console.log("Data set: ", this.state.audioSrc);
+			}).catch(error => {
+				console.log("Error");
+				if (error.response.status == 500){
+					alert(error.response.data)
+				}
 			});
 			console.log(`Encrypting.. Key:${this.state.stegoKey}; ContainerFile: ${this.state.containerFileUpload}; MessageFile: ${this.state.messageFileUpload};Encryption:${this.state.messageEncryption}; RandomSequence:${this.state.randomSequence}  `)
 			console.log(`Encrypting.. Key:${this.state.stegoKey}; ContainerFile: ${this.state.containerFileUpload}; MessageFile: ${this.state.messageFileUpload};Encryption:${this.state.messageEncryption}; RandomSequence:${this.state.randomSequence}  `)
 		}
 	}
 
-	renderPlayer() {
+	renderEncryption() {
 		if (this.state.audioSrc) {
 			console.log("Src: ", this.state.audioSrc);
-			return <ReactAudioPlayer
-				src={this.state.audioSrc}
-				controls
-			/>
+			var format = this.state.audioSrc.split(".");
+			format = format[format.length - 1];
+			return <Grid container>
+				<Grid item xs={6}>
+					<h4>Original</h4>
+					<ReactAudioPlayer
+						src={this.state.audioSrcOri}
+						controls
+					/>
+				</Grid>
+				<Grid item xs={6}>
+					<h4>StegoFile</h4>
+					<ReactAudioPlayer
+						src={this.state.audioSrc}
+						controls
+					/>
+					<Button color="primary" onClick={()=>{
+						var file_name = prompt("Please input file name:", "default");
+						if (file_name == null || file_name == "") {
+							file_name = "default";
+						}
+						saveAs(this.state.audioSrc, file_name + "." + format);
+						}}>Save StegoFile</Button>
+				</Grid>
+			</Grid>
 		}
 	}
-	renderDownloadMessage() {
+	renderDecryption() {
 		if (this.state.messageSrc) {
+			console.log("MsgSrc: ", this.state.messageSrc);
+			var format = this.state.messageSrc.split(".");
+			format = format[format.length - 1];
 			return <div>
-				<a href="https://www.w3schools.com/images/myw3schoolsimage.jpg" download>
-					<Button>Download</Button>
-				</a>
+				<Button onClick={() => {
+					var file_name = prompt("Please input file name:", "default");
+					if (file_name == null || file_name == "") {
+						file_name = "default";
+					}
+					saveAs(this.state.messageSrc, file_name + "." + format);
+				}}>Download</Button>
 			</div>
 		}
 	}
 
+	validateDecrypt() {
+		if (this.state.stegoKey.length <= 0 || this.state.stegoKey > 25) {
+			alert("Stego key must in range [1..25]")
+			return false;
+		}
+		if (!this.state.containerFileUpload) {
+			alert("File container must not empty");
+			return false
+		}
+		return true;
+	}
+	validateEncrypt() {
+		if (this.state.stegoKey.length <= 0 || this.state.stegoKey > 25) {
+			alert("Stego key must in range [1..25]")
+			return false;
+		}
+		if (!this.state.containerFileUpload) {
+			alert("File container must not empty");
+			return false
+		}
+		if (!this.state.messageFileUpload) {
+			alert("Message file must not be empty");
+			return false;
+		}
+		return true;
+	}
+
 	async handleDecrypt() {
+		if (!this.validateDecrypt()) {
+			return;
+		}
 		console.log(`Decrypting Key:${this.state.stegoKey}; ContainerFile: ${this.state.containerFileUpload};   `)
 		if (this.state.containerFileUpload) {
 			this.setState({ messageSrc: null });
@@ -190,23 +258,23 @@ class Body extends Component {
 								</Grid>
 								<Grid item xs={12}>
 									<Grid container spacing={16}>
-										<Grid item>
+										<Grid item xs={6}>
 											<Button onClick={() => this.handleEncrypt()} variant="outlined" color="primary" className={classes.button}>
-												Encrypt
+												Stego!
       						</Button>
 										</Grid>
-										<Grid item>
+										<Grid item xs={6}>
 											<Button onClick={() => this.handleDecrypt()} variant="outlined" color="secondary" className={classes.button}>
-												Decrypt
+												Extract!
 									</Button>
 										</Grid>
 									</Grid>
-									<Grid item xs={12}>
-										{this.renderPlayer()}
-									</Grid>
-									<Grid item xs={12}>
-										{this.renderDownloadMessage()}
-									</Grid>
+								</Grid>
+								<Grid item xs={12}>
+									{this.renderEncryption()}
+								</Grid>
+								<Grid item xs={12}>
+									{this.renderDecryption()}
 								</Grid>
 							</Grid>
 						</Grid>
