@@ -5,6 +5,8 @@ import { Grid, Button, Paper, TextField, Checkbox, FormGroup, FormControlLabel }
 import NavigationButtons from '../components/NavigationButtons';
 import ReactAudioPlayer from 'react-audio-player';
 import { saveAs } from 'file-saver';
+import {} from 'save-file';
+import download from 'download-file'
 import axios from 'axios';
 
 
@@ -45,6 +47,7 @@ class Body extends Component {
 			messageFileUpload: null,
 			audioSrc: null,
 			audioSrcOri: null,
+			psnr: null,
 		}
 	}
 
@@ -74,7 +77,7 @@ class Body extends Component {
 				console.log("Status: ", resp.status);
 				console.log("Response: ", resp.data);
 				var paths = resp.data.split("|");
-				this.setState({ audioSrc: paths[1], audioSrcOri: paths[0] });
+				this.setState({ audioSrc: paths[1], audioSrcOri: paths[0], psnr: paths[2] });
 				// this.render();
 			}).catch(error => {
 				console.log("Error");
@@ -101,7 +104,7 @@ class Body extends Component {
 					/>
 				</Grid>
 				<Grid item xs={6}>
-					<h4>StegoFile</h4>
+					<h4>StegoFile | PSNR : {this.state.psnr}</h4>
 					<ReactAudioPlayer
 						src={this.state.audioSrc}
 						controls
@@ -111,6 +114,7 @@ class Body extends Component {
 						if (file_name == null || file_name == "") {
 							file_name = "default";
 						}
+						console.log("URL: ",this.state.audioSrc);
 						saveAs(this.state.audioSrc, file_name + "." + format);
 						}}>Save StegoFile</Button>
 				</Grid>

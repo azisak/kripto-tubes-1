@@ -1,6 +1,6 @@
 from flask import Flask, request
 from flask_cors import CORS, cross_origin
-from WavStegoEngine import WavStegoEngine
+from WavStegoEngine import WavStegoEngine, compareWAVPSNR
 from Cipher import VigenereExtended
 
 app = Flask(__name__, static_folder='static', static_url_path='/static')
@@ -9,6 +9,18 @@ cors = CORS(app)
 
 
 host = "http://localhost:5000"
+
+@app.after_request
+def add_header(r):
+    """
+    Add headers to both force latest IE rendering engine or Chrome Frame,
+    and also to cache the rendered page for 10 minutes.
+    """
+    r.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    r.headers["Pragma"] = "no-cache"
+    r.headers["Expires"] = "0"
+    r.headers['Cache-Control'] = 'public, max-age=0'
+    return r
 
 
 @app.route('/encrypt', methods=['POST'])
@@ -39,32 +51,34 @@ def encrypt():
         stegoKey=request.form['stegoKey'],
         isMessageEncrypted=encrypted,
         isRandomSequence=randomSeq)
+    
+    psnr = ""
     if (not status):
         message = outPath
         return message, 500
+    else :
+        psnr = str(compareWAVPSNR(containerPath, outPath))
+
 
     outPath = "/".join(outPath.split('/')[1:])
-    print("Outpah")
-    print(outPath)
-    paths = host+"/"+containerPath+"|"+host+"/"+outPath
+    paths = host+"/"+containerPath+"|"+host+"/"+outPath+"|"+psnr
     return paths, 200
 
 
 @app.route('/decrypt', methods=['POST'])
 def decrypt():
-    print("Data:")
-    print(request.form['stegoKey'])
     f_file = request.files['containerFile']
 
     containerPath = "./static/%s" % (f_file.filename)
     outputPath = "/".join(containerPath.split('/')[:-1])
 
     createFile(containerPath, f_file.read())
-
+    
     # Stego Engine Job
     engine = WavStegoEngine(filePath=containerPath)
     outPath = engine.decryptFile(
         filePath=containerPath, outputPath=outputPath, stego_key=request.form['stegoKey'])
+
 
     outPath = "/".join(outPath.split('/')[1:])
     return (host+"/"+outPath), 200

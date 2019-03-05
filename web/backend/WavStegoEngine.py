@@ -74,14 +74,11 @@ class WavStegoEngine:
     def __encryptBytes(self, message_file_format, f_bytes, N_FRAMES, N_CHANNELS,stego_key, isMessageEncrypted, isRandomSequence):
         new_bytes = bytearray(self.container)
         print("Encrypted: {}, Shuffled: {}".format(isMessageEncrypted,isRandomSequence))
-        # if (isMessageEncrypted):
-        #     new_bytes = bytearray(VigenereExtended(key=stego_key).encrypt(new_bytes))
-        # else:
-        #     new_bytes = bytearray(new_bytes)
         bytes_per_frame = len(self.container)//N_FRAMES
         steps = bytes_per_frame // N_CHANNELS
 
         pos_li = [i*steps+(steps-1) for i in range(N_FRAMES*N_CHANNELS)]
+        print("Len pos_li :",len(pos_li))
 
         
         #Write Encoding for MessageEncrypted and RandomSequence
@@ -92,8 +89,7 @@ class WavStegoEngine:
         # Write formats LSB+1 == 0
         ext_format = message_file_format
 
-        data_size = (8*len(ext_format)+8*len(f_bytes)+1)
-        print("Error, Capacity: {}. But data: {}".format(len(pos_li),data_size))
+        data_size = (8*len(ext_format)+8*len(f_bytes)+2)
         if (len(pos_li) < (data_size)):
             msg = "Error, Capacity: {}. But data: {}".format(len(pos_li),data_size)
             return (False, msg)
@@ -103,33 +99,35 @@ class WavStegoEngine:
             [format(f_b, "08b") for f_b in bytes(ext_format, "utf-8")])]
         
     
-        print("Form li len: ",len(form_li))
-        print("Byte to write len: ",len(byte_to_write))
         for i in range(len(byte_to_write)):
             new_bytes[form_li[i]] = (
                 (new_bytes[form_li[i]] & ~3) | byte_to_write[i])
 
+        # Write last format tag
+        new_bytes[pos_li[1+len(ext_format)*8]] = (new_bytes[pos_li[1+len(ext_format)*8]] & ~3) | 3 
+
         # Write datas LSB == 1
-        data_li = pos_li[1+len(ext_format)*8:].copy()
+        data_li = pos_li[2+len(ext_format)*8:].copy()
 
         
 
-        print("Data li len: ",len(data_li))
         if (isRandomSequence):
-            random.seed(sum([ord(c) for c in stego_key]))
+            sums = sum([ord(c) for c in stego_key])
+            random.seed(sums)
             shuffle(data_li)
         if (isMessageEncrypted):
             f_bytes = VigenereExtended(key=stego_key).encrypt(f_bytes)
 
+
         byte_to_write = [2 if c == '0' else 3 for c in "".join(
             [format(f_b, "08b") for f_b in f_bytes])]
-        print("Len BYTES: ",len(new_bytes))
-        for i in range(len(byte_to_write)):
-            if (i < len(data_li)):
-                new_bytes[data_li[i]] = (
-                    (new_bytes[data_li[i]] & ~3) | byte_to_write[i])
+        for i, pos in enumerate(data_li):
+            if (i < len(byte_to_write)):
+                new_bytes[pos] = (
+                    (new_bytes[pos] & ~3) | byte_to_write[i])
             else:  # Other, LSB+1 and LSB == 0
-                new_bytes[data_li[i]] = new_bytes[data_li[i]] & ~3
+                new_bytes[pos] = new_bytes[pos] & ~3
+
 
         return (True, new_bytes)
 
@@ -140,9 +138,9 @@ class WavStegoEngine:
         steps = bytes_per_frame // N_CHANNELS
         pos_li = [i*steps+(steps-1) for i in range(N_FRAMES*N_CHANNELS)]
 
+
         ext_format = None
         read_bytes = []
-        start_format, end_format = pos_li[1], 0
         
         # Read Encoding for MessageEncrypted and RandomSequence
         isMessageEncrypted = True if ((f_bytes[pos_li[0]] & 2) == 2) else False
@@ -150,37 +148,36 @@ class WavStegoEngine:
 
         
         # Read formats LSB+1 = 0
-        for pos in pos_li[1:]:
+        end_pos_id = 1
+        for i,pos in enumerate(pos_li[1:]):
             if (f_bytes[pos] & 2 == 2):
-                end_format = pos
+                end_pos_id = i + end_pos_id
                 break
-            else:
-                end_format = pos
+            else: pass
+
 
         b_str = "".join([str(f_bytes[pos] & 1)
-                         for pos in range(start_format, end_format, steps)])
+                         for pos in pos_li[1:end_pos_id]])
         b_fmt = bytes([int(b_str[i:i+8], 2) for i in range(0, len(b_str), 8)])
         ext_format = b_fmt.decode("utf-8")
 
-        print("Decrypted:  Format: {}".format(ext_format))
-        print("Decrypted: {}, Shuffled: {}".format(isMessageEncrypted,isRandomSequence))
-        
-        data_li = pos_li[1+len(ext_format)*8:].copy()
-        print("Data li len: ",len(data_li))
-
+        data_li = pos_li[2+len(ext_format)*8:].copy()
         if (isRandomSequence):
-            random.seed(sum([ord(c) for c in stego_key]))
+            sums = sum([ord(c) for c in stego_key])
+            random.seed(sums)
             shuffle(data_li)
 
         # Read datas
         msg_len = 0
-        for i in data_li:
-            if (f_bytes[i] & 2 == 0):
+        for i,pos in enumerate(data_li):
+            if (f_bytes[pos] & 2 == 0):
+                msg_len = i
                 break
-            msg_len += 1
 
         b_str = "".join([str(f_bytes[pos] & 1) for pos in data_li[:msg_len]])
         read_bytes = bytes([int(b_str[i:i+8], 2) for i in range(0, len(b_str), 8)])
+        # print("File bytes read: ",read_bytes.decode("utf-8"))
+        
         if (isMessageEncrypted):
             read_bytes = VigenereExtended(key=stego_key).decrypt(read_bytes)
 
@@ -223,7 +220,6 @@ class WavStegoEngine:
         data_bytes = f.readframes(f.getnframes())
         ext_fmt, dec_bytes = self.__decryptFormatAndBytes(
             data_bytes, N_FRAMES=self.params[3], N_CHANNELS=self.params[0], stego_key=stego_key)
-
         filePath = outputPath+"/out."+ext_fmt
         self.__createDecryptedMsgFile(filePath,dec_bytes)
         f.close()
@@ -238,7 +234,9 @@ def compareWAVPSNR(oriPath, encPath):
     f_enc = wave.open(encPath,"rb")
     enc_bytes = f_enc.readframes(f_enc.getnframes())
     f_enc.close()
-    print("PSNR: ",countWAVPSNR(ori_bytes,enc_bytes,N_FRAMES,N_CHANNELS))
+    psnr = countWAVPSNR(ori_bytes,enc_bytes,N_FRAMES,N_CHANNELS)
+    print("PSNR: ",psnr)
+    return psnr
 
 
 def countWAVPSNR(ori_bytes, enc_bytes, N_FRAMES, N_CHANNELS):
